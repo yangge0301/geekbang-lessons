@@ -1,6 +1,7 @@
 package org.geektimes.projects.user.sql;
 
 import org.geektimes.projects.user.domain.User;
+import org.geektimes.util.ConStants;
 
 import java.beans.BeanInfo;
 import java.beans.Introspector;
@@ -15,13 +16,39 @@ import java.util.Properties;
 public class DBConnectionManager {
 
     private Connection connection;
+    private static DBConnectionManager dbConnectionManager;
 
     public void setConnection(Connection connection) {
         this.connection = connection;
     }
 
+    public static DBConnectionManager getInstance(){
+        if(dbConnectionManager == null){
+            dbConnectionManager = new DBConnectionManager();
+        }
+        return dbConnectionManager;
+    }
     public Connection getConnection() {
+        try{
+            Class.forName("org.apache.derby.jdbc.EmbeddedDriver");
+            Driver driver = DriverManager.getDriver(ConStants.DBURL);
+            Connection connection = driver.connect(ConStants.DBURL, new Properties());
+            this.connection = connection;
+        }catch (Exception e){
+            throw new RuntimeException(e.getCause());
+        }
         return this.connection;
+    }
+
+    public  Connection getConnectInstance(){
+        if(this.connection == null){
+            try{
+                connection = DriverManager.getConnection(ConStants.DBURL);
+            }catch (Exception e){
+                throw new RuntimeException(e.getCause());
+            }
+        }
+        return connection;
     }
 
     public void releaseConnection() {
@@ -61,11 +88,11 @@ public class DBConnectionManager {
 //        Connection connection = driver.connect("jdbc:derby:/db/user-platform;create=true", new Properties());
 
         String databaseURL = "jdbc:derby:/db/user-platform;create=true";
-        Connection connection = DriverManager.getConnection(databaseURL);
+        Connection connection = DriverManager.getConnection(ConStants.DBURL);
 
         Statement statement = connection.createStatement();
         // 删除 users 表
-        System.out.println(statement.execute(DROP_USERS_TABLE_DDL_SQL)); // false
+//        System.out.println(statement.execute(DROP_USERS_TABLE_DDL_SQL)); // false
         // 创建 users 表
         System.out.println(statement.execute(CREATE_USERS_TABLE_DDL_SQL)); // false
         System.out.println(statement.executeUpdate(INSERT_USER_DML_SQL));  // 5

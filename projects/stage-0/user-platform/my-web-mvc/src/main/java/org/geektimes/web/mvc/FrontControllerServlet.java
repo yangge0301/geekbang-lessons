@@ -6,6 +6,7 @@ import org.geektimes.web.mvc.controller.PageController;
 import org.geektimes.web.mvc.controller.RestController;
 import org.geektimes.web.mvc.header.CacheControlHeaderWriter;
 import org.geektimes.web.mvc.header.annotation.CacheControl;
+import org.geektimes.web.mvc.util.PathUtil;
 
 import javax.servlet.RequestDispatcher;
 import javax.servlet.ServletConfig;
@@ -57,18 +58,36 @@ public class FrontControllerServlet extends HttpServlet {
             Class<?> controllerClass = controller.getClass();
             Path pathFromClass = controllerClass.getAnnotation(Path.class);
             String requestPath = pathFromClass.value();
+            if(!(StringUtils.isNotBlank(pathFromClass.value())&&pathFromClass.value().startsWith("/"))){
+                requestPath = "/" +requestPath ;
+            }
             Method[] publicMethods = controllerClass.getMethods();
             // 处理方法支持的 HTTP 方法集合
             for (Method method : publicMethods) {
+
                 Set<String> supportedHttpMethods = findSupportedHttpMethods(method);
                 Path pathFromMethod = method.getAnnotation(Path.class);
                 if (pathFromMethod != null) {
-                    requestPath += pathFromMethod.value();
+                    String tmpPath = "";
+                    if(StringUtils.isNotBlank(pathFromMethod.value())&&pathFromMethod.value().startsWith("/")){
+                        tmpPath = requestPath + pathFromMethod.value();
+                    }
+                    else{
+                        tmpPath = requestPath + "/"+pathFromMethod.value();
+                    }
+                    handleMethodInfoMapping.put(tmpPath,
+                            new HandlerMethodInfo(requestPath, method, supportedHttpMethods));
                 }
-                handleMethodInfoMapping.put(requestPath,
-                        new HandlerMethodInfo(requestPath, method, supportedHttpMethods));
+//                else{
+//                    handleMethodInfoMapping.put(requestPath,
+//                            new HandlerMethodInfo(requestPath, method, supportedHttpMethods));
+//                }
+
             }
+
+            String tmpPath = StringUtils.replace(requestPath, "/", "");
             controllersMapping.put(requestPath, controller);
+            controllersMapping.put(tmpPath, controller);
         }
     }
 
@@ -113,10 +132,11 @@ public class FrontControllerServlet extends HttpServlet {
         String servletContextPath = request.getContextPath();
         String prefixPath = servletContextPath;
         // 映射路径（子路径）
-        String requestMappingPath = substringAfter(requestURI,
+        String requestMappingPath = substringAfter(StringUtils.replace(requestURI, "//", "/"),
                 StringUtils.replace(prefixPath, "//", "/"));
+        String pathStr = PathUtil.getSubUtilSimple(requestMappingPath,"\\/(.*?)\\/");
         // 映射到 Controller
-        Controller controller = controllersMapping.get(requestMappingPath);
+        Controller controller = controllersMapping.get(pathStr);
 
         if (controller != null) {
 
@@ -135,18 +155,25 @@ public class FrontControllerServlet extends HttpServlet {
 
                     if (controller instanceof PageController) {
                         PageController pageController = PageController.class.cast(controller);
-                        String viewPath = pageController.execute(request, response);
-                        // 页面请求 forward
-                        // request -> RequestDispatcher forward
-                        // RequestDispatcher requestDispatcher = request.getRequestDispatcher(viewPath);
-                        // ServletContext -> RequestDispatcher forward
-                        // ServletContext -> RequestDispatcher 必须以 "/" 开头
-                        ServletContext servletContext = request.getServletContext();
-                        if (!viewPath.startsWith("/")) {
-                            viewPath = "/" + viewPath;
+//                        String viewPath = pageController.execute(request, response);
+                        Object result = handlerMethodInfo.getHandlerMethod().invoke(pageController,request,response);
+                        if(result instanceof  String){
+                            String viewPath = result.toString();
+                            ServletContext servletContext = request.getServletContext();
+//
+                            if (!viewPath.startsWith("/")) {
+                                viewPath = "/" + viewPath;
+                            }
+                            if(viewPath.contains(".jsp")){
+                                viewPath="/WEB-INF/jsp"+viewPath;
+                            }
+                            RequestDispatcher requestDispatcher = servletContext.getRequestDispatcher(viewPath);
+                            requestDispatcher.forward(request, response);
                         }
-                        RequestDispatcher requestDispatcher = servletContext.getRequestDispatcher(viewPath);
-                        requestDispatcher.forward(request, response);
+                        else{
+                            // TODO
+                        }
+
                         return;
                     } else if (controller instanceof RestController) {
                         // TODO
@@ -160,6 +187,9 @@ public class FrontControllerServlet extends HttpServlet {
                     throw new ServletException(throwable.getCause());
                 }
             }
+        }
+        else{
+
         }
     }
 
